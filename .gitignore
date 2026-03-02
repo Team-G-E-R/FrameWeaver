@@ -3,6 +3,10 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+#models dirs
+data/sd/models
+data/sd/outputs
+
 # C extensions
 *.so
 

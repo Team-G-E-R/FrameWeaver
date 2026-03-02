@@ -1,4 +1,0 @@
-stub generator ok
-job_id=455ede42-3a7b-4dbb-9ae1-c52e0cfbc445
-type=sprites
-prompt=test-1-40be2d49-a01c-4ae9-86e9-8b99940182ff

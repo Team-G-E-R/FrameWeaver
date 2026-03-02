@@ -55,8 +55,28 @@
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       JOB_DATA_DIR: /data/jobs
+      SD_WEBUI_URL: http://sd_webui:7860
     command: celery -A worker_app worker -l info -Q celery --concurrency=1
+  sd_webui:
+    image: siutin/stable-diffusion-webui-docker:latest-cpu
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./data/sd/models:/app/stable-diffusion-webui/models
+      - ./data/sd/outputs:/app/stable-diffusion-webui/outputs
+    command: >
+      bash webui.sh
+      --skip-torch-cuda-test
+      --use-cpu all
+      --precision full
+      --no-half
+      --api
+      --listen
+      --port 7860
 
 volumes:
   pgdata:
   data:
+  sd_models:
+  sd_webui_data:
+  

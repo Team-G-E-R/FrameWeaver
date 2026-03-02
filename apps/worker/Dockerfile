@@ -13,5 +13,6 @@ RUN pip install --no-cache-dir -e /app/packages/shared
 
 COPY --from=worker_src worker_app.py /app/worker_app.py
 COPY --from=worker_src tasks.py /app/tasks.py
+COPY --from=worker_src webui_client.py /app/webui_client.py
 
 CMD ["celery", "-A", "worker_app", "worker", "-l", "info", "-Q", "celery", "--concurrency=1"]

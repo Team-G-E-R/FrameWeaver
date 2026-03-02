@@ -1,1 +1,13 @@
-﻿{"type":"icon","params":{"prompt":"wait:1"}}
+﻿{
+  "type": "icon",
+  "params": {
+    "prompt": "pixel art, 2d game sprite, small cute robot character, centered, full body, simple silhouette, clean outline, limited palette, plain background",
+    "negative_prompt": "text, watermark, logo, blurry, low quality, noisy, artifact, jpeg artifacts, deformed, extra limbs, cropped",
+    "width": 512,
+    "height": 512,
+    "steps": 20,
+    "cfg_scale": 5,
+    "sampler_name": "Euler a",
+    "seed": 12345
+  }
+}
