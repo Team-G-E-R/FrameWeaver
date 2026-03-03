@@ -91,6 +91,14 @@
       --api
       --listen
       --port 7860
+  web:
+    build:
+      context: .
+      dockerfile: infra/nginx/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
 
 volumes:
   pgdata:

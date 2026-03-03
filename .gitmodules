@@ -1,0 +1,3 @@
+[submodule "front/sprite-ui"]
+	path = front/sprite-ui
+	url = https://github.com/Team-G-E-R/Site.git
