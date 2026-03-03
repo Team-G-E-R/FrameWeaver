@@ -47,8 +47,12 @@
     env_file:
       - .env
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_started
+      sd_webui:
+        condition: service_healthy
     volumes:
       - data:/data
     environment:
@@ -64,6 +68,20 @@
     volumes:
       - ./data/sd/models:/app/stable-diffusion-webui/models
       - ./data/sd/outputs:/app/stable-diffusion-webui/outputs
+      - sd_webui_venv:/app/stable-diffusion-webui/venv
+      - sd_webui_cache:/home/app/.cache
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:7860/sdapi/v1/options', timeout=2)); assert d.get('sd_model_checkpoint'), 'no checkpoint yet'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 400s
     command: >
       bash webui.sh
       --skip-torch-cuda-test
@@ -78,5 +96,5 @@ volumes:
   pgdata:
   data:
   sd_models:
-  sd_webui_data:
-  
+  sd_webui_venv:
+  sd_webui_cache:

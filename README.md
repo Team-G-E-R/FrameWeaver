@@ -6,12 +6,6 @@
 doker compose build
 docker compose up -d
 
- 
-## then: 
-docker compose logs -f --tail=200 worker
-
-and wait for model initialize
-
 ## test payload
 payload:
 @'
