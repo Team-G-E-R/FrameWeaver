@@ -2,6 +2,9 @@
 
 ## How to setup(PowerShell):
 
+git submodule init
+git submodule update
+
 ## run(repo root dir) :
 doker compose build
 docker compose up -d

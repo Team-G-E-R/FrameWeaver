@@ -1,7 +1,7 @@
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
 
 JobType = Literal["sprites", "sound", "text", "icon"]
@@ -21,3 +21,15 @@ class JobResponse(BaseModel):
     params: dict[str, Any]
     result: dict[str, Any] | None = None
     error: str | None = None
+
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+class MeOut(BaseModel):
+    id: str
+    email: EmailStr

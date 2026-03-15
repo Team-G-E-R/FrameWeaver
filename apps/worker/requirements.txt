@@ -5,3 +5,5 @@ asyncpg==0.29.0
 psycopg2-binary==2.9.9
 pydantic-settings==2.4.0
 requests==2.32.3
+email-validator
+Pillow==10.4.0
