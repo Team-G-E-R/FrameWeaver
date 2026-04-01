@@ -15,6 +15,37 @@
     ports:
       - "6379:6379"
 
+  translation_service:
+    build:
+      context: .
+      dockerfile: apps/translation_service/Dockerfile
+      additional_contexts:
+        translation_src: ./apps/translation_service
+    env_file:
+      - .env
+    ports:
+      - "8010:8000"
+    volumes:
+      - translation_model_cache:/root/.cache
+    environment:
+      TRANSLATION_MODEL_NAME: Helsinki-NLP/opus-mt-ru-en
+      TRANSLATION_TARGET_LANG: en
+      TRANSLATION_MAX_TEXT_LENGTH: 1000
+      TRANSLATION_DEVICE: cpu
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)); assert d.get('status') == 'ok'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
   api:
     build:
       context: .
@@ -27,14 +58,20 @@
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      translation_service:
+        condition: service_healthy
     volumes:
       - data:/data
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       JOB_DATA_DIR: /data/jobs
+      TRANSLATION_SERVICE_URL: http://translation_service:8000
+      TRANSLATION_TIMEOUT_SECONDS: 5
     command: sh -lc "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   worker:
@@ -61,6 +98,7 @@
       JOB_DATA_DIR: /data/jobs
       SD_WEBUI_URL: http://sd_webui:7860
     command: celery -A worker_app worker -l info -Q celery --concurrency=1
+
   sd_webui:
     image: siutin/stable-diffusion-webui-docker:latest-cpu
     ports:
@@ -91,6 +129,7 @@
       --api
       --listen
       --port 7860
+
   web:
     build:
       context: .
@@ -106,3 +145,4 @@ volumes:
   sd_models:
   sd_webui_venv:
   sd_webui_cache:
+  translation_model_cache:

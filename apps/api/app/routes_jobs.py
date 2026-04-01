@@ -11,6 +11,7 @@ from app.models import Job
 from app.schemas import JobCreateRequest, JobResponse
 from app.celery_client import celery_app
 from app.auth_deps import get_current_user_id
+from app.services.job_params import prepare_job_params
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -32,12 +33,14 @@ async def create_job(
     if exists:
         raise HTTPException(status_code=409, detail="Another job is already active")
 
+    normalized_params = await prepare_job_params(body.type, body.params)
+
     job = Job(
         job_id=uuid4(),
         user_id=user_id,
         type=body.type,
         status="queued",
-        params=body.params,
+        params=normalized_params,
         result=None,
         error=None,
     )
