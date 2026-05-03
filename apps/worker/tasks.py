@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import time
@@ -134,6 +135,48 @@ def _call_text_generation_service(payload: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
+def get_audio_generation_url() -> str:
+    url = os.getenv("SOUND_GENERATION_SERVICE_URL")
+    if not url:
+        raise RuntimeError("SOUND_GENERATION_SERVICE_URL is not set")
+    return url.rstrip("/")
+
+
+def get_audio_generation_timeout() -> int:
+    raw = os.getenv(" AUDIO_GENERATION_TIMEOUT_SECONDS", "300")
+    try:
+        return int(raw)
+    except Exception:
+        return 300
+
+
+def _call_audio_generation_service(payload: Dict[str, Any]) -> tuple[bytes, Dict[str, Any]]:
+    url = f"{get_audio_generation_url()}/generate"
+    timeout_s = get_audio_generation_timeout()
+
+    response = requests.post(url, json=payload, timeout=timeout_s)
+    response.raise_for_status()
+
+    content_type = response.headers.get("content-type", "").lower()
+
+    if "application/json" in content_type:
+        data = response.json()
+        if not isinstance(data, dict):
+            raise RuntimeError("Audio generation service returned invalid JSON response")
+
+        audio_base64 = data.get("audio_base64") or data.get("wav_base64")
+        if isinstance(audio_base64, str) and audio_base64.strip():
+            return base64.b64decode(audio_base64), data
+
+        raise RuntimeError("Audio generation service JSON response does not contain audio_base64/wav_base64")
+
+    audio_bytes = response.content
+    if not audio_bytes:
+        raise RuntimeError("Audio generation service returned empty audio")
+
+    return audio_bytes, {"content_type": content_type}
+
+
 @app.task(name="jobs.run")
 def run_job(job_id: str) -> None:
     jid = str(uuid.UUID(job_id))
@@ -243,6 +286,79 @@ def run_job(job_id: str) -> None:
                     "model": service_result.get("model"),
                     "prompt_tokens": service_result.get("prompt_tokens"),
                     "completion_tokens": service_result.get("completion_tokens"),
+                    "service_duration_ms": service_result.get("duration_ms"),
+                    "duration_ms": duration_ms,
+                },
+            )
+
+            _write_json_atomic(out_dir / "result.json", result_payload)
+
+            with engine.begin() as conn:
+                metadata = MetaData()
+                jobs = Table("jobs", metadata, autoload_with=conn)
+
+                conn.execute(
+                    update(jobs)
+                    .where(jobs.c.job_id == jid)
+                    .values(
+                        status="succeeded",
+                        result=result_payload,
+                        error=None,
+                        updated_at=func.now(),
+                    )
+                )
+
+            return
+
+        if job_type == "sound":
+            duration_seconds = _clamp(_extract_int(params, "duration_seconds", 2), 1, 30)
+            sample_rate = _clamp(_extract_int(params, "sample_rate", 44100), 8000, 48000)
+            audio_kind = _extract_str(params, "audio_kind", "sfx")
+
+            audio_payload: Dict[str, Any] = {
+                "prompt": prompt,
+                "audio_kind": audio_kind,
+                "duration_seconds": duration_seconds,
+                "sample_rate": sample_rate,
+            }
+
+            audio_bytes, service_result = _call_audio_generation_service(audio_payload)
+
+            audio_path = out_dir / "result.wav"
+            audio_path.write_bytes(audio_bytes)
+
+            preview_path = out_dir / "preview.txt"
+            preview_path.write_text(
+                "audio_generation ok\n"
+                f"job_id={jid}\n"
+                f"type={job_type}\n"
+                f"prompt={prompt}\n"
+                f"audio_kind={audio_kind}\n"
+                f"duration_seconds={duration_seconds}\n"
+                f"sample_rate={sample_rate}\n"
+                f"model={service_result.get('model')}\n"
+                f"service_duration_ms={service_result.get('duration_ms')}\n",
+                encoding="utf-8",
+            )
+
+            duration_ms = int((time.perf_counter() - started) * 1000)
+
+            result_payload = build_result_v1(
+                kind="sound",
+                engine="audio_generation_service",
+                artifacts={
+                    "audio": "out/result.wav",
+                    "wav": "out/result.wav",
+                    "json": "out/result.json",
+                    "preview": "out/preview.txt",
+                },
+                meta={
+                    "prompt": prompt,
+                    "prompt_original": params.get("prompt_original") if isinstance(params, dict) else None,
+                    "audio_kind": audio_kind,
+                    "duration_seconds": duration_seconds,
+                    "sample_rate": sample_rate,
+                    "model": service_result.get("model"),
                     "service_duration_ms": service_result.get("duration_ms"),
                     "duration_ms": duration_ms,
                 },

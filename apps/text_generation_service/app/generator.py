@@ -107,13 +107,16 @@ class TextGenerator:
             return trimmed[:last_sentence_end + 1].strip()
 
         return trimmed.rstrip(" ,;:") + "."
+    
+    def _estimate_max_new_tokens(self, word_count: int) -> int:
+        return max(64, min(512, int(word_count * 2.2)))
 
     def __init__(self) -> None:
         self.config = TextGenerationConfig(
             model_name=os.getenv("TEXT_GENERATION_MODEL_NAME", "Qwen/Qwen2.5-0.5B-Instruct"),
             device=os.getenv("TEXT_GENERATION_DEVICE", "cpu"),
             max_new_tokens=int(os.getenv("TEXT_GENERATION_MAX_NEW_TOKENS", "256")),
-            temperature=float(os.getenv("TEXT_GENERATION_TEMPERATURE", "0.7")),
+            temperature=float(os.getenv("TEXT_GENERATION_TEMPERATURE", "0.6")),
             top_p=float(os.getenv("TEXT_GENERATION_TOP_P", "0.9")),
         )
 
@@ -135,7 +138,7 @@ class TextGenerator:
     def generate(self, request: GenerateTextRequest) -> GenerateTextResponse:
         started_at = time.perf_counter()
 
-        max_new_tokens = request.max_new_tokens or self.config.max_new_tokens
+        max_new_tokens = request.max_new_tokens or self._estimate_max_new_tokens(request.word_count)
         temperature = request.temperature or self.config.temperature
         top_p = request.top_p or self.config.top_p
 

@@ -2,7 +2,7 @@ from copy import deepcopy
 from typing import Any
 
 
-IMAGE_PROMPT_JOB_TYPES = {"sprites", "icon"}
+TRANSLATABLE_PROMPT_JOB_TYPES   = {"sprites", "icon", "sound"}
 
 
 async def prepare_job_params(job_type: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -15,7 +15,7 @@ async def prepare_job_params(job_type: str, params: dict[str, Any]) -> dict[str,
     prompt = prompt.strip()
     prepared["prompt_original"] = prompt
 
-    if job_type not in IMAGE_PROMPT_JOB_TYPES:
+    if job_type not in TRANSLATABLE_PROMPT_JOB_TYPES :
         prepared["prompt"] = prompt
         return prepared
 

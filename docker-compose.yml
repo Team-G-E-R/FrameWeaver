@@ -78,6 +78,41 @@
       start_period: 180s
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
+  sound_generation_service:
+    build:
+      context: .
+      dockerfile: apps/sound_generation_service/Dockerfile
+      additional_contexts:
+        sound_generation_src: ./apps/sound_generation_service
+    env_file:
+      - .env
+    ports:
+      - "8030:8000"
+    volumes:
+      - sound_generation_model_cache:/root/.cache
+    environment:
+      SOUND_GENERATION_MODEL_NAME: facebook/musicgen-small
+      SOUND_GENERATION_DEVICE: cpu
+      SOUND_GENERATION_DEFAULT_DURATION_SECONDS: 5
+      SOUND_GENERATION_MAX_DURATION_SECONDS: 160
+      SOUND_GENERATION_TOP_K: 250
+      SOUND_GENERATION_TOP_P: 0.0
+      SOUND_GENERATION_TEMPERATURE: 1.0
+      SOUND_GENERATION_CFG_COEF: 3.0
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)); assert d.get('status') == 'ok'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 90
+      start_period: 300s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
   api:
     build:
       context: .
@@ -124,6 +159,8 @@
         condition: service_healthy
       text_generation_service:
         condition: service_healthy
+      sound_generation_service:
+        condition: service_healthy
     volumes:
       - data:/data
     environment:
@@ -133,6 +170,8 @@
       SD_WEBUI_URL: http://sd_webui:7860
       TEXT_GENERATION_SERVICE_URL: http://text_generation_service:8000
       TEXT_GENERATION_TIMEOUT_SECONDS: 120
+      SOUND_GENERATION_SERVICE_URL: http://sound_generation_service:8000
+      AUDIO_GENERATION_TIMEOUT_SECONDS: 1800
     command: celery -A worker_app worker -l info -Q celery --concurrency=1
 
   sd_webui:
@@ -178,8 +217,8 @@
 volumes:
   pgdata:
   data:
-  sd_models:
   sd_webui_venv:
   sd_webui_cache:
   translation_model_cache:
   text_generation_model_cache:
+  sound_generation_model_cache:
