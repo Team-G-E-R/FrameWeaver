@@ -1,22 +1,30 @@
 from copy import deepcopy
 from typing import Any
 
-from app.services.prompt_translation import translate_prompt_to_english
+
+IMAGE_PROMPT_JOB_TYPES = {"sprites", "icon"}
 
 
 async def prepare_job_params(job_type: str, params: dict[str, Any]) -> dict[str, Any]:
     prepared = deepcopy(params if isinstance(params, dict) else {})
 
     prompt = prepared.get("prompt")
-    if isinstance(prompt, str) and prompt.strip():
-        prepared["prompt_original"] = prompt
+    if not isinstance(prompt, str) or not prompt.strip():
+        return prepared
 
-        try:
-            translated = await translate_prompt_to_english(prompt)
-        except Exception:
-            translated = prompt
+    prompt = prompt.strip()
+    prepared["prompt_original"] = prompt
 
-        prepared["prompt_en"] = translated
-        prepared["prompt"] = translated
+    if job_type not in IMAGE_PROMPT_JOB_TYPES:
+        prepared["prompt"] = prompt
+        return prepared
+
+    try:
+        translated = await translate_prompt_to_english(prompt)
+    except Exception:
+        translated = prompt
+
+    prepared["prompt_en"] = translated
+    prepared["prompt"] = translated
 
     return prepared

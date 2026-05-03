@@ -46,6 +46,38 @@
       start_period: 60s
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
+  text_generation_service:
+    build:
+      context: .
+      dockerfile: apps/text_generation_service/Dockerfile
+      additional_contexts:
+        text_generation_src: ./apps/text_generation_service
+    env_file:
+      - .env
+    ports:
+      - "8020:8000"
+    volumes:
+      - text_generation_model_cache:/root/.cache
+    environment:
+      TEXT_GENERATION_MODEL_NAME: Qwen/Qwen2.5-0.5B-Instruct
+      TEXT_GENERATION_DEVICE: cpu
+      TEXT_GENERATION_MAX_NEW_TOKENS: 256
+      TEXT_GENERATION_TEMPERATURE: 0.7
+      TEXT_GENERATION_TOP_P: 0.9
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)); assert d.get('status') == 'ok'"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 180s
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
   api:
     build:
       context: .
@@ -90,6 +122,8 @@
         condition: service_started
       sd_webui:
         condition: service_healthy
+      text_generation_service:
+        condition: service_healthy
     volumes:
       - data:/data
     environment:
@@ -97,6 +131,8 @@
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       JOB_DATA_DIR: /data/jobs
       SD_WEBUI_URL: http://sd_webui:7860
+      TEXT_GENERATION_SERVICE_URL: http://text_generation_service:8000
+      TEXT_GENERATION_TIMEOUT_SECONDS: 120
     command: celery -A worker_app worker -l info -Q celery --concurrency=1
 
   sd_webui:
@@ -146,3 +182,4 @@ volumes:
   sd_webui_venv:
   sd_webui_cache:
   translation_model_cache:
+  text_generation_model_cache:

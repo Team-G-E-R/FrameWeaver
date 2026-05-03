@@ -6,6 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict
 
+import requests
 from PIL import Image
 from sqlalchemy import MetaData, Table, create_engine, func, select, update
 
@@ -100,6 +101,39 @@ def _resize_png_bytes_nearest(png_bytes: bytes, width: int, height: int) -> byte
         return out.getvalue()
 
 
+def get_text_generation_url() -> str:
+    url = os.getenv("TEXT_GENERATION_SERVICE_URL")
+    if not url:
+        raise RuntimeError("TEXT_GENERATION_SERVICE_URL is not set")
+    return url.rstrip("/")
+
+
+def get_text_generation_timeout() -> int:
+    raw = os.getenv("TEXT_GENERATION_TIMEOUT_SECONDS", "120")
+    try:
+        return int(raw)
+    except Exception:
+        return 120
+
+
+def _call_text_generation_service(payload: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{get_text_generation_url()}/generate"
+    timeout_s = get_text_generation_timeout()
+
+    response = requests.post(url, json=payload, timeout=timeout_s)
+    response.raise_for_status()
+
+    data = response.json()
+    if not isinstance(data, dict):
+        raise RuntimeError("Text generation service returned invalid response")
+
+    text = data.get("text")
+    if not isinstance(text, str) or not text.strip():
+        raise RuntimeError("Text generation service returned empty text")
+
+    return data
+
+
 @app.task(name="jobs.run")
 def run_job(job_id: str) -> None:
     jid = str(uuid.UUID(job_id))
@@ -141,6 +175,97 @@ def run_job(job_id: str) -> None:
         root = _job_root_dir(jid)
         out_dir = root / "out"
         out_dir.mkdir(parents=True, exist_ok=True)
+
+        if job_type == "text":
+            word_count = _clamp(_extract_int(params, "word_count", 80), 10, 300)
+            language = _extract_str(params, "language", "ru")
+            text_kind = _extract_str(params, "text_kind", "other")
+
+            text_payload: Dict[str, Any] = {
+                "prompt": prompt,
+                "text_kind": text_kind,
+                "language": language,
+                "word_count": word_count,
+            }
+
+            max_new_tokens = params.get("max_new_tokens") if isinstance(params, dict) else None
+            if max_new_tokens is not None:
+                text_payload["max_new_tokens"] = _clamp(
+                    _extract_int(params, "max_new_tokens", 256),
+                    16,
+                    512,
+                )
+
+            temperature = params.get("temperature") if isinstance(params, dict) else None
+            if temperature is not None:
+                text_payload["temperature"] = _extract_float(params, "temperature", 0.7)
+
+            top_p = params.get("top_p") if isinstance(params, dict) else None
+            if top_p is not None:
+                text_payload["top_p"] = _extract_float(params, "top_p", 0.9)
+
+            service_result = _call_text_generation_service(text_payload)
+            generated_text = str(service_result["text"]).strip()
+
+            text_path = out_dir / "result.txt"
+            text_path.write_text(generated_text, encoding="utf-8")
+
+            preview_path = out_dir / "preview.txt"
+            preview_path.write_text(
+                "text_generation ok\n"
+                f"job_id={jid}\n"
+                f"type={job_type}\n"
+                f"prompt={prompt}\n"
+                f"text_kind={text_kind}\n"
+                f"language={language}\n"
+                f"word_count={word_count}\n"
+                f"model={service_result.get('model')}\n"
+                f"duration_ms={service_result.get('duration_ms')}\n",
+                encoding="utf-8",
+            )
+
+            duration_ms = int((time.perf_counter() - started) * 1000)
+
+            result_payload = build_result_v1(
+                kind="text",
+                engine="text_generation_service",
+                artifacts={
+                    "text": "out/result.txt",
+                    "json": "out/result.json",
+                    "preview": "out/preview.txt",
+                },
+                meta={
+                    "prompt": prompt,
+                    "prompt_original": params.get("prompt_original") if isinstance(params, dict) else None,
+                    "text_kind": text_kind,
+                    "language": language,
+                    "word_count": word_count,
+                    "model": service_result.get("model"),
+                    "prompt_tokens": service_result.get("prompt_tokens"),
+                    "completion_tokens": service_result.get("completion_tokens"),
+                    "service_duration_ms": service_result.get("duration_ms"),
+                    "duration_ms": duration_ms,
+                },
+            )
+
+            _write_json_atomic(out_dir / "result.json", result_payload)
+
+            with engine.begin() as conn:
+                metadata = MetaData()
+                jobs = Table("jobs", metadata, autoload_with=conn)
+
+                conn.execute(
+                    update(jobs)
+                    .where(jobs.c.job_id == jid)
+                    .values(
+                        status="succeeded",
+                        result=result_payload,
+                        error=None,
+                        updated_at=func.now(),
+                    )
+                )
+
+            return
 
         requested_width = _clamp(_extract_int(params, "width", 512), 64, 1024)
         requested_height = _clamp(_extract_int(params, "height", 512), 64, 1024)

@@ -67,3 +67,9 @@ $cid = docker compose ps -q worker
 mkdir downloads -Force | Out-Null
 docker cp "$cid`:/data/jobs/$jobId/out/result.png" ".\downloads\$jobId.png"
 start ".\downloads\$jobId.png"
+
+## open ngrock tunnel port 8080
+npx ngrok http 8080
+
+## cloudFlare tunnel
+cloudflared tunnel --protocol http2 --url http://localhost:8080
